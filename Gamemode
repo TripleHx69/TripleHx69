@@ -1,0 +1,516 @@
+#include <a_samp>
+#include <a_mysql>
+#include <streamer>
+#include <easyDialog>
+#include <Pawn.CMD>
+#include <sscanf2>
+
+
+#undef	 MAX_PLAYERS
+#define	 MAX_PLAYERS			100
+
+#define  YSI_NO_OPTIMISATION_MESSAGE
+#define  YSI_NO_CACHE_MESSAGE
+#define  YSI_NO_MODE_CACHE
+#define  YSI_NO_HEAP_MALLOC
+#define  YSI_NO_VERSION_CHECK
+
+#include <YSI_Data\y_iterate>
+#include <YSI_Coding\y_timers>
+
+
+//--> ����� Localhost
+#define  MYSQL_HOSTNAME		"localhost"
+#define  MYSQL_USERNAME		"gtacoloSQL_6783"
+#define  MYSQL_PASSWORD		"rt0E0JEoPIXR"
+#define  MYSQL_DATABASE		"gtacoloSQL_6783"
+
+#define     MAX_INVENTORY       	(1500)
+
+#define 	COLOR_GREY				0xAFAFAFFF
+#define		COLOR_GREY1    			0xE6E6E6FF
+#define 	COLOR_GREY2 			0xC8C8C8FF
+#define 	COLOR_GREY3 			0xAAAAAAFF
+#define 	COLOR_GREY4 			0x8C8C8CFF
+#define 	COLOR_GREY5 			0x6E6E6EFF
+#define 	COLOR_PURPLE      		0xD0AEEBFF
+#define     COLOR_YELLOW        	0xFFFF00FF
+
+//--> �к�િ�����ŷء��
+new PlayerSaveTime[MAX_PLAYERS];
+
+//--> MySQL R41-4
+new MySQL: Database,PlayerName[MAX_PLAYERS][30],PlayerIP[MAX_PLAYERS][17];
+native WP_Hash(buffer[], len, const str[]); 
+
+//--> �����
+enum PlayerData 
+{
+	ID,
+	Password[129],
+	Money,
+	ItemFree,
+	pInventoryPage,
+	pInventoryShown,
+	pItemSelected,
+	pInventorySlots,
+	pWeapons[13],
+	pAmmo[13],
+	pInvWeapons[5],
+	pInvAmmo[5],
+	pSelectedItem,			
+};
+new playerData[MAX_PLAYERS][PlayerData];
+
+new PlayerText:inventoryTextdraws[MAX_PLAYERS][90];
+
+#include "Include/Inventory.pwn"
+
+main()
+{
+     print("Gamemode-Clean BY EnterDev");
+}
+
+public OnGameModeInit()
+{
+    //--> MySQL R41-4
+	new MySQLOpt: option_id = mysql_init_options();
+	mysql_set_option(option_id, AUTO_RECONNECT, true); 
+	Database = mysql_connect(MYSQL_HOSTNAME, MYSQL_USERNAME, MYSQL_PASSWORD, MYSQL_DATABASE, option_id);
+	if (Database == MYSQL_INVALID_HANDLE || mysql_errno(Database) != 0){
+		print("MYSQL ERROR : SERVER OFF");
+		SendRconCommand("exit"); 
+		return 1;
+	}
+	SetGameModeText("AlexDev 1.0.0");
+	print("MySQL connection is successful.");
+	
+	//--> �к�િ�����ŷء��
+	SetTimer("AutoSave", 1000, 1);
+	
+	return 1;
+}
+
+public OnGameModeExit(){
+	return 1;
+}
+
+public OnPlayerConnect(playerid){
+    //--> MySQL R41-4
+	new query[140];
+	GetPlayerName(playerid, PlayerName[playerid], 30); 
+	GetPlayerIp(playerid, PlayerIP[playerid], 16);
+	mysql_format(Database, query, sizeof(query), "SELECT `Password`, `ID` FROM `users` WHERE `Username` = '%e' LIMIT 0, 1", PlayerName[playerid]); // We are selecting the password and the ID from the player's name
+	mysql_tquery(Database, query, "CheckPlayer", "i", playerid);
+	PlayerLoad(playerid);
+	return 1;
+}
+public OnPlayerDisconnect(playerid, reason){
+	//Save ������ ���Ҽ������͡����
+    SavePlayer(playerid);
+	return 1;
+}
+
+public OnPlayerSpawn(playerid)
+{
+	//--> �ش�Դ
+	SetPlayerPos(playerid,1642.2371,-2335.0247,13.5469 );
+	SetPlayerFacingAngle(playerid, 359.5183 );
+	SetPlayerInterior(playerid, 0);
+	SetPlayerVirtualWorld(playerid, 0);
+	return 1;
+}
+
+public OnPlayerText(playerid, text[])
+{
+	return 1;
+}
+
+public OnPlayerCommandText(playerid, cmdtext[])
+{
+	return 0;
+}
+
+public OnPlayerStateChange(playerid, newstate, oldstate)
+{
+	return 1;
+}
+
+
+public OnPlayerKeyStateChange(playerid, newkeys, oldkeys)
+{
+	if (newkeys & KEY_CTRL_BACK && !IsPlayerInAnyVehicle(playerid))
+	{
+	    toggleInventory(playerid);
+	}
+	return 1;
+}
+
+public OnPlayerClickPlayerTextDraw(playerid, PlayerText:playertextid)
+{
+	// --> ��ͧ�红ͧ
+	if(playerData[playerid][pInventoryShown])
+	{
+	    new string[256];
+		if(playertextid == inventoryTextdraws[playerid][3]) 
+		{
+		    toggleInventory(playerid);
+		}
+		else if(playertextid == inventoryTextdraws[playerid][62] && playerData[playerid][pInventoryPage] > 1) 
+		{
+		    playerData[playerid][pInventoryPage]--;
+			refreshInventory(playerid);
+			return 1;
+		}
+		else if(playertextid == inventoryTextdraws[playerid][64] && playerData[playerid][pInventoryPage] < (MAX_PLAYER_ITEMS / 8)) 
+		{
+		    playerData[playerid][pInventoryPage]++;
+			refreshInventory(playerid);
+			return 1;
+		}
+		if(playerData[playerid][pItemSelected] >= 0) 
+		{
+		    if(playertextid == inventoryTextdraws[playerid][40])
+			{
+				}
+		        refreshInventory(playerid);
+		    }
+		    else if(playertextid == inventoryTextdraws[playerid][42]) 
+			{
+		        if(playerItems[playerid][playerData[playerid][pItemSelected]][pItemAmount] > 1) 
+				{
+					format(string, sizeof(string), "�س�� %s �繨ӹǹ %i\n\n��س��кبӹǹ���س��ͧ����ҧŧ���:", playerItems[playerid][playerData[playerid][pItemSelected]][pItemName], playerItems[playerid][playerData[playerid][pItemSelected]][pItemAmount]);
+					Dialog_Show(playerid, DIALOG_DROPITEM, DIALOG_STYLE_INPUT, "Drop Item", string, "�ҧŧ", "¡��ԡ");
+				}
+				else 
+				{
+				    DropPlayerItem(playerid, playerData[playerid][pItemSelected], playerItems[playerid][playerData[playerid][pItemSelected]][pItemAmount]);
+		        }
+		        return 1;
+		    }
+		}
+		if(playertextid == inventoryTextdraws[playerid][65])
+		{
+			dropWeaponFromInventory(playerid, 1);
+		}
+		else if(playertextid == inventoryTextdraws[playerid][66])
+		{
+			dropWeaponFromInventory(playerid, 2);
+		}
+		else if(playertextid == inventoryTextdraws[playerid][67])
+		{
+			dropWeaponFromInventory(playerid, 3);
+		}
+		else if(playertextid == inventoryTextdraws[playerid][68])
+		{
+			dropWeaponFromInventory(playerid, 4);
+		}
+		else if(playertextid == inventoryTextdraws[playerid][69])
+		{
+			dropWeaponFromInventory(playerid, 5);
+		}
+
+		/* -------------------------- [Inv Weapons] --------------------------- */
+		for(new i = 0; i < 5; i ++) 
+		{
+			new
+			    indexID = (i * 4) + 12;
+
+		    if(playertextid == inventoryTextdraws[playerid][indexID + 2]) 
+			{
+		        if(!playerData[playerid][pInvWeapons][i]) 
+				{
+		            new
+						weaponID = GetPlayerWeapon(playerid);
+
+				    if(!weaponID) 
+					{
+				        return SendClientMessage(playerid, COLOR_GREY, "�س�е�ͧ������ظ���س��ͧ��������㹤�ѧ���ظ");
+					}
+
+					playerData[playerid][pInvWeapons][i] = weaponID;
+					playerData[playerid][pInvAmmo][i] = GetPlayerAmmo(playerid);
+
+                    removePlayerWeapon(playerid, weaponID);
+                    refreshInventory(playerid);
+					new string[256];
+					format(string, sizeof(string), "** %s ������ظ %s (%i) �����㹤�ѧ���ظ", GetPlayerNameEx(playerid), WeaponNames[playerData[playerid][pInvWeapons][i]], playerData[playerid][pInvAmmo][i]);
+	                SendNearbyMessage(playerid, 20.0, COLOR_PURPLE, string);
+
+					return 1;
+				}
+				else
+				{
+				    new string[512];
+
+				    if(!givePlayerValidWeapon(playerid, playerData[playerid][pInvWeapons][i], playerData[playerid][pInvAmmo][i])) 
+					{
+						return notEnoughWeaponSpace(playerid);
+					}
+
+		            format(string, sizeof(string), "** %s ������ظ %s (%i) �͡�Ҩҡ��ѧ���ظ", GetPlayerNameEx(playerid), WeaponNames[playerData[playerid][pInvWeapons][i]], playerData[playerid][pInvAmmo][i]);
+                    SendNearbyMessage(playerid, 20.0, COLOR_PURPLE, string);
+
+	        	    playerData[playerid][pInvWeapons][i] = 0;
+	            	playerData[playerid][pInvAmmo][i] = 0;
+
+	            	refreshInventory(playerid);
+	            	return 1;
+				}
+			}
+			/* -------------------------- [Inv Items] --------------------------- */
+			new start = (playerData[playerid][pInventoryPage] - 1) * 8;
+
+			for(new i = start; i < start + 8; i ++) 
+			{
+				new
+					indexID = ((i % 8) * 2) + 46;
+
+				if(playertextid == inventoryTextdraws[playerid][indexID]) 
+				{
+					if(playerItems[playerid][i][pItemExists]) 
+					{
+						selectInventoryItem(playerid, i);
+					}
+				}
+			}
+		}
+		return 1;
+	}
+
+public OnPlayerUpdate(playerid)
+{
+	//--> �к�����Թ���� Cr. Tenka
+	if (GetPlayerMoney(playerid) != playerData[playerid][Money])
+	{
+	    ResetPlayerMoney(playerid);
+	    GivePlayerMoney(playerid, playerData[playerid][Money]);
+	}
+	return 1;
+}
+
+//--> �к�િ�����ŷء��
+forward AutoSave();
+public AutoSave(){
+	foreach(new i: Player){
+		if(IsPlayerConnected(i)){
+		    if(PlayerSaveTime[i] == 1){
+	    		SavePlayer(i);
+			}
+		}
+	}
+    return 1;
+}
+
+forward PlayerLoad(playerid);
+public PlayerLoad(playerid){
+	playerData[playerid][Money] = 0;
+	playerData[playerid][ItemFree] = 0;
+
+	if(!playerData[playerid][pInventorySlots]) playerData[playerid][pInventorySlots] = 16;
+
+	if(playerData[playerid][pInventorySlots] >= MAX_PLAYER_ITEMS) {
+		playerData[playerid][pInventorySlots] = MAX_PLAYER_ITEMS;
+	}
+
+    playerData[playerid][pInventoryShown] = 0;
+    playerData[playerid][pInventoryPage] = 0;
+    playerData[playerid][pItemSelected] = -1;
+
+	PlayerSaveTime[playerid] = 0;
+    return 1;
+}
+
+//--> �� ��� �ѭ�չ�� �� �����ѧ
+forward CheckPlayer(playerid);
+public CheckPlayer(playerid){
+	new rows, string[150];
+	cache_get_row_count(rows);
+	if(rows) {
+		cache_get_value_name(0, "Password", playerData[playerid][Password], 129);
+		cache_get_value_name_int(0, "ID", playerData[playerid][ID]);
+		format(string, sizeof(string), "{FFFFFF}�س�պѭ����������������\n\n��س�������ʼ�ҹ��ҹ��ҧ\n���ͷӡ����͡�Թ���������������");
+		Dialog_Show(playerid, DIALOG_LOGIN, DIALOG_STYLE_PASSWORD, "({FFFFFF}{00FF13}��͡�Թ{00FF13}{FFFFFF})", string, "��͡�Թ", "");
+	}
+	else {
+		format(string, sizeof(string), "{FFFFFF}�س�ѧ����պѭ������������\n\n��س�������ʼ�ҹ��ҹ��ҧ\n���ͷӡ����Ѥ���Ҫԡ ����������");
+		Dialog_Show(playerid, DIALOG_REGISTER, DIALOG_STYLE_INPUT, "({FFFFFF}{FF0000}��Ѥ�{FF0000}{FFFFFF})", string, "��Ѥ�", "");
+	}
+	return 1;
+}
+
+//--> ��͡�Թ
+Dialog:DIALOG_LOGIN(playerid, response, listitem, inputtext[]){
+	if(!response)
+		return Kick(playerid); 
+	new password[129], query[100];
+	WP_Hash(password, 129, inputtext); 
+	if(!strcmp(password, playerData[playerid][Password])) {
+		mysql_format(Database, query, sizeof(query), "SELECT * FROM `users` WHERE `Username` = '%e' LIMIT 0, 1", PlayerName[playerid]);
+		mysql_tquery(Database, query, "LoadPlayer", "i", playerid);
+	}
+	else {
+		Dialog_Show(playerid, DIALOG_LOGIN, DIALOG_STYLE_PASSWORD, "Login", "{FF0000}Wrong Password!\n{FFFFFF}Type your correct password below to continue and sign in to your account", "Login", "Exit");
+		
+	}
+	return 1;
+}
+
+//--> ��Ѥ�
+Dialog:DIALOG_REGISTER(playerid, response, listitem, inputtext[]){
+	if(!response)
+		return Kick(playerid);
+	if(strlen(inputtext) < 3){
+	   SendClientMessage(playerid, 0xFF0000, "�س������ʼ�ҹ�Դ �������Դ�Թ 3 �ͺ");
+	   return CheckPlayer(playerid);
+	}
+	new query[300];
+	WP_Hash(playerData[playerid][Password], 129, inputtext);
+	mysql_format(Database, query, sizeof(query), "INSERT INTO `users` (`Username`, `Password`, `IP`, `Money`) VALUES ('%e', '%e', '%e', 0)", PlayerName[playerid], playerData[playerid][Password], PlayerIP[playerid]);
+	mysql_pquery(Database, query, "RegisterPlayer", "i", playerid);
+	return 1;
+}
+
+//--> ��Ŵ�����Ũҡ �ҹ������
+forward LoadPlayer(playerid);
+public LoadPlayer(playerid){
+	cache_get_value_name_int(0, "Money", playerData[playerid][Money]);
+	cache_get_value_name_int(0, "ItemFree", playerData[playerid][ItemFree]);
+	PlayerSaveTime[playerid] = 1;
+	FreeItem(playerid);
+	//--> ���¡��OnplayerSpawn
+    SpawnPlayer(playerid);
+	return 1;
+}
+
+forward FreeItem(playerid);
+public FreeItem(playerid){
+	if(playerData[playerid][ItemFree] == 0)
+	{
+	  playerData[playerid][ItemFree] = 1;
+	  GivePlayerMoneyEx(playerid, 1000);
+	  SendClientMessage(playerid, -1, "[SERVER] �Թ�յ�͹�Ѻ���������������");
+	  SendClientMessage(playerid, -1, "[!] �س�繼��������� ���Ѻ �Թ �ӹǹ $1000");
+	}
+	return 1;
+}
+//--> િ�����ż�����
+forward SavePlayer(playerid);
+public SavePlayer(playerid){
+	new query[2048];
+	mysql_format(Database, query, sizeof(query), "UPDATE `users` SET `Money` = '%d', `ItemFree` = '%d' WHERE `ID` = '%d'",
+	playerData[playerid][Money],
+	playerData[playerid][ItemFree],
+	playerData[playerid][ID]);
+	mysql_tquery(Database, query); 
+	return 1;
+}
+
+//--> ���Ҽ�������Ѥ���Ҫԡ������
+forward RegisterPlayer(playerid);
+public RegisterPlayer(playerid){
+    new string[150];
+	playerData[playerid][ID] = cache_insert_id();
+	printf("ID ��������Ѥ���������� SQL ID : %d", playerData[playerid][ID]);
+	cache_get_value_name(0, "Password", playerData[playerid][Password], 129);
+	cache_get_value_name_int(0, "ID", playerData[playerid][ID]);
+	format(string, sizeof(string), "{FFFFFF}�س�պѭ����������������\n\n��س�������ʼ�ҹ��ҹ��ҧ\n���ͷӡ����͡�Թ���������������");
+	Dialog_Show(playerid, DIALOG_LOGIN, DIALOG_STYLE_PASSWORD, "({FFFFFF}{00FF13}��͡�Թ{00FF13}{FFFFFF})", string, "��͡�Թ", "");
+	return 1;
+}
+
+//--> �к�����Թ���� Cr. Tenka
+GivePlayerMoneyEx(playerid, value){
+	playerData[playerid][Money] += value;
+	GivePlayerMoney(playerid, value);
+	return 1;
+}
+
+GetPlayerNameEx(playerid)
+{
+    new string[MAX_PLAYER_NAME + 1];
+    GetPlayerName(playerid, string, sizeof(string));
+    return string;
+}
+
+
+SendNearbyMessage(playerid, Float:radius, color, const str[], {Float,_}:...)
+{
+	static
+	    args,
+	    start,
+	    end,
+	    string[144]
+	;
+	#emit LOAD.S.pri 8
+	#emit STOR.pri args
+
+	if (args > 16)
+	{
+		#emit ADDR.pri str
+		#emit STOR.pri start
+
+	    for (end = start + (args - 16); end > start; end -= 4)
+		{
+	        #emit LREF.pri end
+	        #emit PUSH.pri
+		}
+		#emit PUSH.S str
+		#emit PUSH.C 144
+		#emit PUSH.C string
+
+		#emit LOAD.S.pri 8
+		#emit CONST.alt 4
+		#emit SUB
+		#emit PUSH.pri
+
+		#emit SYSREQ.C format
+		#emit LCTRL 5
+		#emit SCTRL 4
+
+        foreach (new i : Player)
+		{
+			if (IsPlayerNearPlayer(i, playerid, radius))
+			{
+  				SendClientMessage(i, color, string);
+			}
+		}
+		return 1;
+	}
+	foreach (new i : Player)
+	{
+		if (IsPlayerNearPlayer(i, playerid, radius))
+		{
+			SendClientMessage(i, color, str);
+		}
+	}
+	return 1;
+}
+
+
+IsPlayerNearPlayer(playerid, targetid, Float:radius)
+{
+	static
+		Float:fX,
+		Float:fY,
+		Float:fZ;
+
+	GetPlayerPos(targetid, fX, fY, fZ);
+
+	return (GetPlayerInterior(playerid) == GetPlayerInterior(targetid) && GetPlayerVirtualWorld(playerid) == GetPlayerVirtualWorld(targetid)) && IsPlayerInRangeOfPoint(playerid, radius, fX, fY, fZ);
+}
+
+GivePlayerWeaponEx(playerid, weaponid, ammo)
+{
+    if(!weaponid) return 0;
+
+    gPlayerWeaponData[playerid][weaponid] = true;
+    return GivePlayerWeapon(playerid, weaponid, ammo);
+}
+
+ResetPlayerWeaponsEx(playerid)
+{
+    for(new weaponid; weaponid < 46; weaponid++)
+    gPlayerWeaponData[playerid][weaponid] = false;
+    return ResetPlayerWeapons(playerid);
+}
